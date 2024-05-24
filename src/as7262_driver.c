@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include "i2c_service.h"
 
-static const char* TAG = "AS7262_DRIVER";
+//static const char* TAG = "AS7262_DRIVER";
 
 // Internal helper functions
 static esp_err_t as7262_write_register(i2c_master_dev_handle_t dev_handle, uint8_t reg, uint8_t value);
