@@ -1,16 +1,6 @@
 #include "uart_commands.h"
-#include "nvs_service.h"
-#include "scd41_driver.h"
-#include "as7262_driver.h"
-#include "esp_log.h"
-#include "esp_console.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <inttypes.h>
-
 
 #define TAG "UART_COMMANDS"
-#define NVS_NAMESPACE "as7262_cal"
 
 // Global device handles (extern to access from main.c)
 extern i2c_master_dev_handle_t scd41_dev;
@@ -123,6 +113,7 @@ int cmd_help(int argc, char **argv) {
     printf("  frc - Trigger forced recalibration on the SCD41\n");
     printf("  read_scd41 - Read SCD41 sensor data\n");
     printf("  read_as7262 - Read AS7262 sensor data\n");
+    printf("  read_tds - Read TDS sensor value\n");
     printf("  nvs_set_i32 - Set an integer value in NVS\n");
     printf("  nvs_get_i32 - Get an integer value from NVS\n");
     printf("  nvs_set_str - Set a string value in NVS\n");
@@ -130,6 +121,7 @@ int cmd_help(int argc, char **argv) {
     printf("  nvs_stats - Print NVS statistics\n");
     printf("  set_as7262_cal - Set AS7262 calibration parameters\n");
     printf("  get_as7262_cal - Get AS7262 calibration parameters\n");
+    printf("  reset - Reset the system\n");
     return 0;
 }
 
@@ -210,6 +202,20 @@ int cmd_nvs_stats(int argc, char **argv) {
     return 0;
 }
 
+// Command handler for reading TDS sensor
+int cmd_read_tds(int argc, char **argv) {
+    float tds_value = read_tds_sensor();
+    printf("TDS Value: %.2f ppm\n", tds_value);
+    return 0;
+}
+
+// Command handler for resetting the system
+int cmd_reset_system(int argc, char **argv) {
+    printf("System reset initiated...\n");
+    esp_restart();
+    return 0;
+}
+
 // Register commands
 void register_commands() {
     esp_console_cmd_t cmd;
@@ -243,6 +249,14 @@ void register_commands() {
         .help = "Read AS7262 sensor data",
         .hint = NULL,
         .func = &cmd_read_as7262,
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+
+    cmd = (esp_console_cmd_t) {
+        .command = "read_tds",
+        .help = "Read TDS sensor value",
+        .hint = NULL,
+        .func = &cmd_read_tds,
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
 
@@ -301,6 +315,14 @@ void register_commands() {
         .help = "Get AS7262 calibration parameters",
         .hint = NULL,
         .func = &cmd_get_as7262_calibration,
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+
+    cmd = (esp_console_cmd_t) {
+        .command = "reset",
+        .help = "Reset the system",
+        .hint = NULL,
+        .func = &cmd_reset_system,
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
 }
