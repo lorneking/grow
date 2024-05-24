@@ -25,5 +25,7 @@ esp_err_t scd41_measure_single_shot(i2c_master_dev_handle_t dev_handle);
 esp_err_t scd41_perform_self_test(i2c_master_dev_handle_t dev_handle, bool *malfunction);
 esp_err_t scd41_perform_factory_reset(i2c_master_dev_handle_t dev_handle);
 esp_err_t scd41_reinit(i2c_master_dev_handle_t dev_handle);
+esp_err_t scd41_start_automatic_self_calibration(i2c_master_dev_handle_t dev_handle);
+esp_err_t scd41_set_forced_recalibration(i2c_master_dev_handle_t dev_handle, uint16_t target_co2_concentration);
 
 #endif // SCD41_DRIVER_H

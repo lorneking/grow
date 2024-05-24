@@ -106,3 +106,34 @@ esp_err_t scd41_perform_factory_reset(i2c_master_dev_handle_t dev_handle) {
 esp_err_t scd41_reinit(i2c_master_dev_handle_t dev_handle) {
     return scd41_send_command(dev_handle, REINIT);
 }
+
+// Function to start automatic self-calibration
+esp_err_t scd41_start_automatic_self_calibration(i2c_master_dev_handle_t dev_handle) {
+    uint8_t command[2] = {0x24, 0x16}; // Command to start ASC
+    esp_err_t ret = i2c_write_to_device(dev_handle, command, sizeof(command));
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start automatic self-calibration: %s", esp_err_to_name(ret));
+    }
+    return ret;
+}
+
+// Function to set forced recalibration
+esp_err_t scd41_set_forced_recalibration(i2c_master_dev_handle_t dev_handle, uint16_t target_co2_concentration) {
+    uint8_t command[2] = {0x36, 0x2F}; // Command to set FRC
+    uint8_t data[3];
+    data[0] = (target_co2_concentration >> 8) & 0xFF;
+    data[1] = target_co2_concentration & 0xFF;
+    data[2] = 0x00; // CRC placeholder, compute as needed
+
+    // Append the data to the command
+    uint8_t buffer[5] = {command[0], command[1], data[0], data[1], data[2]};
+
+    // Compute CRC for the data bytes (implement CRC calculation if needed)
+    buffer[4] = calculate_crc(data, 2);
+
+    esp_err_t ret = i2c_write_to_device(dev_handle, buffer, sizeof(buffer));
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set forced recalibration: %s", esp_err_to_name(ret));
+    }
+    return ret;
+}
