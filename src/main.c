@@ -1,5 +1,5 @@
 #include "driver/i2c_master.h"
-#include "driver/uart.h"        // Include the UART driver header
+#include "driver/uart.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "scd41_driver.h"
@@ -10,8 +10,10 @@
 #include "esp_console.h"
 #include "argtable3/argtable3.h"
 #include "nvs_flash.h"
-#include "esp_vfs_dev.h"        // Include VFS driver for UART
-#include "linenoise/linenoise.h" // Include linenoise for command line interface
+#include "esp_vfs_dev.h"
+#include "linenoise/linenoise.h"
+#include "nvs_service.h"
+#include <inttypes.h> // Include for PRId32
 
 #define TAG "Main"
 
@@ -19,9 +21,18 @@
 static i2c_master_dev_handle_t scd41_dev;
 static i2c_master_dev_handle_t as7262_dev;
 
+// Function declarations for command handlers
+int cmd_forced_recalibration(int argc, char **argv);
+int cmd_read_scd41(int argc, char **argv);
+int cmd_read_as7262(int argc, char **argv);
+int cmd_help(int argc, char **argv);
+int cmd_nvs_set_i32(int argc, char **argv);
+int cmd_nvs_get_i32(int argc, char **argv);
+int cmd_nvs_set_str(int argc, char **argv);
+int cmd_nvs_get_str(int argc, char **argv);
+
 // Function to apply correction factors
 void apply_correction_factors(float* data) {
-    // Example correction factors
     float correction_factors[6] = {1.05, 0.98, 1.02, 1.00, 0.99, 1.01};
     for (int i = 0; i < 6; i++) {
         data[i] *= correction_factors[i];
@@ -46,7 +57,7 @@ int cmd_read_scd41(int argc, char **argv) {
     float temperature, humidity;
     esp_err_t ret = scd41_read_measurement(scd41_dev, &co2, &temperature, &humidity);
     if (ret == ESP_OK) {
-        printf("SCD41 - CO2: %d ppm, Temperature: %.2f °C, Humidity: %.2f %%\n", co2, temperature, humidity);
+        printf("SCD41 - CO2: %u ppm, Temperature: %.2f °C, Humidity: %.2f %%\n", co2, temperature, humidity);
     } else {
         ESP_LOGE(TAG, "Error reading SCD41 measurement, code: %s", esp_err_to_name(ret));
     }
@@ -79,12 +90,89 @@ int cmd_help(int argc, char **argv) {
     printf("  frc - Trigger forced recalibration on the SCD41\n");
     printf("  read_scd41 - Read SCD41 sensor data\n");
     printf("  read_as7262 - Read AS7262 sensor data\n");
+    printf("  nvs_set_i32 - Set an integer value in NVS\n");
+    printf("  nvs_get_i32 - Get an integer value from NVS\n");
+    printf("  nvs_set_str - Set a string value in NVS\n");
+    printf("  nvs_get_str - Get a string value from NVS\n");
     return 0;
 }
 
-// Register console commands
+// Command handler for setting an integer value in NVS
+int cmd_nvs_set_i32(int argc, char **argv) {
+    int32_t value;
+    if (argc != 3) {
+        printf("Usage: nvs_set_i32 <key> <value>\n");
+        return 1;
+    }
+    const char* key = argv[1];
+    value = atoi(argv[2]);
+    esp_err_t ret = nvs_service_set_i32(key, value);
+    if (ret == ESP_OK) {
+        nvs_service_commit();
+        printf("Set integer value: %" PRId32 " for key: %s\n", value, key);
+    } else {
+        printf("Failed to set integer value: %s\n", esp_err_to_name(ret));
+    }
+    return ret == ESP_OK ? 0 : 1;
+}
+
+// Command handler for getting an integer value from NVS
+int cmd_nvs_get_i32(int argc, char **argv) {
+    int32_t value;
+    if (argc != 2) {
+        printf("Usage: nvs_get_i32 <key>\n");
+        return 1;
+    }
+    const char* key = argv[1];
+    esp_err_t ret = nvs_service_get_i32(key, &value);
+    if (ret == ESP_OK) {
+        printf("Got integer value: %" PRId32 " for key: %s\n", value, key);
+    } else {
+        printf("Failed to get integer value: %s\n", esp_err_to_name(ret));
+    }
+    return ret == ESP_OK ? 0 : 1;
+}
+
+// Command handler for setting a string value in NVS
+int cmd_nvs_set_str(int argc, char **argv) {
+    if (argc != 3) {
+        printf("Usage: nvs_set_str <key> <value>\n");
+        return 1;
+    }
+    const char* key = argv[1];
+    const char* value = argv[2];
+    esp_err_t ret = nvs_service_set_str(key, value);
+    if (ret == ESP_OK) {
+        nvs_service_commit();
+        printf("Set string value: %s for key: %s\n", value, key);
+    } else {
+        printf("Failed to set string value: %s\n", esp_err_to_name(ret));
+    }
+    return ret == ESP_OK ? 0 : 1;
+}
+
+// Command handler for getting a string value from NVS
+int cmd_nvs_get_str(int argc, char **argv) {
+    char value[128]; // Adjust size as needed
+    if (argc != 2) {
+        printf("Usage: nvs_get_str <key>\n");
+        return 1;
+    }
+    const char* key = argv[1];
+    esp_err_t ret = nvs_service_get_str(key, value, sizeof(value));
+    if (ret == ESP_OK) {
+        printf("Got string value: %s for key: %s\n", value, key);
+    } else {
+        printf("Failed to get string value: %s\n", esp_err_to_name(ret));
+    }
+    return ret == ESP_OK ? 0 : 1;
+}
+
+// Register commands
 void register_commands() {
-    esp_console_cmd_t cmd = {
+    esp_console_cmd_t cmd;
+
+    cmd = (esp_console_cmd_t) {
         .command = "help",
         .help = "Show this help message",
         .hint = NULL,
@@ -113,6 +201,39 @@ void register_commands() {
         .help = "Read AS7262 sensor data",
         .hint = NULL,
         .func = &cmd_read_as7262,
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+
+    // Register NVS commands
+    cmd = (esp_console_cmd_t) {
+        .command = "nvs_set_i32",
+        .help = "Set an integer value in NVS",
+        .hint = NULL,
+        .func = &cmd_nvs_set_i32,
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+
+    cmd = (esp_console_cmd_t) {
+        .command = "nvs_get_i32",
+        .help = "Get an integer value from NVS",
+        .hint = NULL,
+        .func = &cmd_nvs_get_i32,
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+
+    cmd = (esp_console_cmd_t) {
+        .command = "nvs_set_str",
+        .help = "Set a string value in NVS",
+        .hint = NULL,
+        .func = &cmd_nvs_set_str,
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+
+    cmd = (esp_console_cmd_t) {
+        .command = "nvs_get_str",
+        .help = "Get a string value from NVS",
+        .hint = NULL,
+        .func = &cmd_nvs_get_str,
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
 }
@@ -152,12 +273,11 @@ void initialize_console() {
 
 void app_main(void) {
     // Initialize NVS
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
+    esp_err_t ret = nvs_service_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize NVS: %s", esp_err_to_name(ret));
+        return;
     }
-    ESP_ERROR_CHECK(ret);
 
     // Initialize console
     initialize_console();
