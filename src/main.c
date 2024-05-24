@@ -30,6 +30,7 @@ int cmd_nvs_set_i32(int argc, char **argv);
 int cmd_nvs_get_i32(int argc, char **argv);
 int cmd_nvs_set_str(int argc, char **argv);
 int cmd_nvs_get_str(int argc, char **argv);
+int cmd_nvs_stats(int argc, char **argv); // Declare the new command handler
 
 // Function to apply correction factors
 void apply_correction_factors(float* data) {
@@ -94,6 +95,7 @@ int cmd_help(int argc, char **argv) {
     printf("  nvs_get_i32 - Get an integer value from NVS\n");
     printf("  nvs_set_str - Set a string value in NVS\n");
     printf("  nvs_get_str - Get a string value from NVS\n");
+    printf("  nvs_stats - Print NVS statistics\n"); // Add new command to help
     return 0;
 }
 
@@ -168,6 +170,12 @@ int cmd_nvs_get_str(int argc, char **argv) {
     return ret == ESP_OK ? 0 : 1;
 }
 
+// Command handler for printing NVS statistics
+int cmd_nvs_stats(int argc, char **argv) {
+    print_nvs_stats();
+    return 0;
+}
+
 // Register commands
 void register_commands() {
     esp_console_cmd_t cmd;
@@ -234,6 +242,14 @@ void register_commands() {
         .help = "Get a string value from NVS",
         .hint = NULL,
         .func = &cmd_nvs_get_str,
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+
+    cmd = (esp_console_cmd_t) {
+        .command = "nvs_stats",
+        .help = "Print NVS statistics",
+        .hint = NULL,
+        .func = &cmd_nvs_stats,
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
 }

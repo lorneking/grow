@@ -1,4 +1,3 @@
-// nvs_service.h
 #ifndef NVS_SERVICE_H
 #define NVS_SERVICE_H
 
@@ -25,5 +24,8 @@ esp_err_t nvs_service_erase_key(const char* key);
 
 // Commit changes to NVS
 esp_err_t nvs_service_commit(void);
+
+// Print NVS statistics
+void print_nvs_stats(void);
 
 #endif // NVS_SERVICE_H

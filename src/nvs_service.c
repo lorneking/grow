@@ -78,3 +78,14 @@ esp_err_t nvs_service_commit(void) {
     }
     return ret;
 }
+
+void print_nvs_stats(void) {
+    nvs_stats_t nvs_stats;
+    esp_err_t ret = nvs_get_stats(NULL, &nvs_stats); // NULL for default partition
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "NVS Stats: Used entries = %d, Free entries = %d, All entries = %d, Namespace entries = %d",
+                 nvs_stats.used_entries, nvs_stats.free_entries, nvs_stats.total_entries, nvs_stats.namespace_count);
+    } else {
+        ESP_LOGE(TAG, "Error (%s) getting NVS stats", esp_err_to_name(ret));
+    }
+}
