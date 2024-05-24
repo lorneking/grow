@@ -1,37 +1,51 @@
 #include "tds_sensor.h"
-#include "esp_adc/adc_oneshot.h"
 #include "esp_log.h"
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_continuous.h"
 
-static const char* TAG = "TDS_SENSOR";
+#define TDS_ADC_CHANNEL ADC_CHANNEL_6 // Adjust based on your actual ADC channel
 
-#define ADC_CHANNEL ADC_CHANNEL_0 // GPIO26 is ADC_CHANNEL_0
-#define ADC_UNIT ADC_UNIT_1       // ADC Unit 1
+static const char *TAG = "TDS_SENSOR";
+static adc_oneshot_unit_handle_t adc_handle = NULL;
 
-static adc_oneshot_unit_handle_t adc_handle;
-
-esp_err_t tds_sensor_init(void) {
-    // Configure ADC
+esp_err_t initialize_tds_sensor(void) {
     adc_oneshot_unit_init_cfg_t init_config = {
-        .unit_id = ADC_UNIT,
+        .unit_id = ADC_UNIT_1,
+        .ulp_mode = ADC_ULP_MODE_DISABLE,
     };
-    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc_handle));
+    esp_err_t ret = adc_oneshot_new_unit(&init_config, &adc_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize ADC unit: %s", esp_err_to_name(ret));
+        return ret;
+    }
 
     adc_oneshot_chan_cfg_t config = {
-        .atten = ADC_ATTEN_DB_12,
-        .bitwidth = ADC_BITWIDTH_12,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+        .atten = ADC_ATTEN_DB_0,
     };
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, ADC_CHANNEL, &config));
+    ret = adc_oneshot_config_channel(adc_handle, TDS_ADC_CHANNEL, &config);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to configure ADC channel: %s", esp_err_to_name(ret));
+        return ret;
+    }
 
-    ESP_LOGI(TAG, "TDS sensor initialized");
     return ESP_OK;
 }
 
 float read_tds_sensor(void) {
-    int raw_value;
-    ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, ADC_CHANNEL, &raw_value));
-    // Convert the raw ADC value to TDS value (this conversion factor may vary based on your specific sensor and calibration)
-    float tds_value = (float)raw_value * (5.0 / 4096.0) * 500.0; // Example conversion formula
+    if (adc_handle == NULL) {
+        ESP_LOGE(TAG, "ADC handle not initialized");
+        return -1.0;
+    }
 
-    ESP_LOGI(TAG, "Raw ADC Value: %d, TDS Value: %.2f ppm", raw_value, tds_value);
+    int raw_value;
+    esp_err_t ret = adc_oneshot_read(adc_handle, TDS_ADC_CHANNEL, &raw_value);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read ADC value: %s", esp_err_to_name(ret));
+        return -1.0;
+    }
+
+    // Convert the raw ADC value to TDS value here if needed
+    float tds_value = (float)raw_value; // Placeholder conversion
     return tds_value;
 }

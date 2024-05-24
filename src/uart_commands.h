@@ -1,18 +1,19 @@
 #ifndef UART_COMMANDS_H
 #define UART_COMMANDS_H
 
-#include "tds_sensor.h"
-#include "esp_console.h"
+#include "driver/i2c_master.h"
+#include "driver/uart.h"
+#include "esp_err.h"
 #include "esp_log.h"
-#include "nvs_service.h"
 #include "scd41_driver.h"
 #include "as7262_driver.h"
+#include "nvs_service.h"
+#include "tds_sensor.h"
+#include "esp_console.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <inttypes.h>
 #include "esp_system.h"
-
-#define NVS_NAMESPACE "as7262_cal"
 
 // Global device handles (extern to access from main.c)
 extern i2c_master_dev_handle_t scd41_dev;
@@ -38,6 +39,6 @@ int cmd_nvs_get_str(int argc, char **argv);
 int cmd_nvs_stats(int argc, char **argv);
 int cmd_read_tds(int argc, char **argv);
 int cmd_reset_system(int argc, char **argv);
-void register_commands();
+void register_commands(void);
 
 #endif // UART_COMMANDS_H

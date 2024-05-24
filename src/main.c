@@ -13,16 +13,18 @@
 #include "esp_vfs_dev.h"
 #include "linenoise/linenoise.h"
 #include "nvs_service.h"
-#include "uart_commands.h" // Include the new uart_commands header
-#include <stdio.h> // Include for printf
+#include "uart_commands.h"
+#include <stdio.h>
 #include "tds_sensor.h"
 
+#undef TAG
 #define TAG "Main"
 
 // Global device handles
 i2c_master_dev_handle_t scd41_dev; // Global to access from uart_commands.c
 i2c_master_dev_handle_t as7262_dev; // Global to access from uart_commands.c
 
+// Initialize the console
 void initialize_console() {
     esp_console_config_t console_config = {
         .max_cmdline_args = 8,
@@ -31,6 +33,7 @@ void initialize_console() {
     };
     ESP_ERROR_CHECK(esp_console_init(&console_config));
 
+    // Configure UART
     const uart_config_t uart_config = {
         .baud_rate = 115200,
         .data_bits = UART_DATA_8_BITS,
@@ -43,137 +46,147 @@ void initialize_console() {
     ESP_ERROR_CHECK(uart_driver_install(CONFIG_ESP_CONSOLE_UART_NUM, 256, 0, 0, NULL, 0));
     esp_vfs_dev_uart_use_driver(CONFIG_ESP_CONSOLE_UART_NUM);
 
+    // Initialize linenoise
     linenoiseSetMultiLine(1);
     linenoiseHistorySetMaxLen(100);
     linenoiseAllowEmpty(false);
     linenoiseSetMaxLineLen(console_config.max_cmdline_length);
     linenoiseHistoryLoad("/spiffs/console_history.txt");
 
+    // Register commands
     register_commands();
 }
 
+// Task to handle console input
 void console_task(void *arg) {
     while (true) {
-        char *line = linenoise("> ");
-        if (line != NULL) {
-            linenoiseHistoryAdd(line);
+        char* line = linenoise("> ");
+        if (line != NULL) { // Check for NULL in case of error or EOF
+            linenoiseHistoryAdd(line); // Add to command history
             int ret;
             esp_err_t err = esp_console_run(line, &ret);
             if (err != ESP_OK) {
                 printf("Error or unknown command: %s\n", esp_err_to_name(err));
             }
-            linenoiseFree(line);
+            linenoiseFree(line); // Free the memory allocated by linenoise
         }
     }
 }
 
-void scd41_task(void *arg) {
-    // Start periodic measurement for SCD41
-    esp_err_t ret = scd41_start_periodic_measurement(scd41_dev);
+// Task to initialize sensors
+void sensor_init_task(void *arg) {
+    esp_err_t ret;
+
+    // Initialize I2C master bus
+    i2c_master_bus_handle_t i2c_bus;
+    ret = initialize_i2c_master(&i2c_bus);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start periodic measurement: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Failed to initialize I2C master bus: %s", esp_err_to_name(ret));
         vTaskDelete(NULL);
+        return;
     }
 
-    // Start automatic self-calibration for SCD41
-    ret = scd41_start_automatic_self_calibration(scd41_dev);
+    // Add the SCD41 device on the I2C bus
+    ret = scd41_init(i2c_bus, &scd41_dev);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start automatic self-calibration: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Failed to initialize SCD41 device: %s", esp_err_to_name(ret));
         vTaskDelete(NULL);
+        return;
     }
 
+    // Add the AS7262 device on the I2C bus
+    ret = as7262_init(i2c_bus, &as7262_dev);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize AS7262 device: %s", esp_err_to_name(ret));
+        vTaskDelete(NULL);
+        return;
+    }
+
+    // Initialize the TDS sensor ADC
+    ret = initialize_tds_sensor();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize TDS sensor ADC: %s", esp_err_to_name(ret));
+        vTaskDelete(NULL);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Sensor initialization complete.");
+    vTaskDelete(NULL);
+}
+
+// Task to read SCD41 data
+void read_scd41_task(void *arg) {
     while (true) {
         uint16_t co2;
         float temperature, humidity;
-        ret = scd41_read_measurement(scd41_dev, &co2, &temperature, &humidity);
+        esp_err_t ret = scd41_read_measurement(scd41_dev, &co2, &temperature, &humidity);
         if (ret == ESP_OK) {
-            ESP_LOGI(TAG, "SCD41 - CO2: %u ppm, Temperature: %.2f °C, Humidity: %.2f %%", co2, temperature, humidity);
+            printf("SCD41 - CO2: %u ppm, Temperature: %.2f °C, Humidity: %.2f %%\n", co2, temperature, humidity);
         } else {
             ESP_LOGE(TAG, "Error reading SCD41 measurement, code: %s", esp_err_to_name(ret));
         }
-        vTaskDelay(pdMS_TO_TICKS(10000)); // Delay for 10 seconds
+        vTaskDelay(pdMS_TO_TICKS(5000)); // Delay for 5 seconds
     }
 }
 
-void as7262_task(void *arg) {
-    // Load AS7262 calibration parameters
-    as7262_calibration_t calibration;
-    esp_err_t ret = load_as7262_calibration(&calibration);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to load AS7262 calibration parameters: %s", esp_err_to_name(ret));
-        for (int i = 0; i < 6; i++) {
-            calibration.correction_factors[i] = 1.0f;
-        }
-    }
-
-    // Configure AS7262 integration time and start measurement
-    ret = as7262_set_integration_time(as7262_dev, 50); // 50 * 2.8ms = 140ms
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to set AS7262 integration time: %s", esp_err_to_name(ret));
-        vTaskDelete(NULL);
-    }
-    ret = as7262_start_measurement(as7262_dev, 2); // Continuous Measurement Mode
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start AS7262 measurement: %s", esp_err_to_name(ret));
-        vTaskDelete(NULL);
-    }
-
+// Task to read AS7262 data
+void read_as7262_task(void *arg) {
     while (true) {
         uint16_t raw_channels[6];
-        ret = as7262_read_measurement(as7262_dev, raw_channels);
+        esp_err_t ret = as7262_read_measurement(as7262_dev, raw_channels);
         if (ret == ESP_OK) {
             float calibrated_data[6];
             for (int i = 0; i < 6; i++) {
                 calibrated_data[i] = (float)raw_channels[i];
             }
             apply_correction_factors(calibrated_data);
-            ESP_LOGI(TAG, "AS7262 - Corrected: V=%.2f, B=%.2f, G=%.2f, Y=%.2f, O=%.2f, R=%.2f",
-                     calibrated_data[0], calibrated_data[1], calibrated_data[2],
-                     calibrated_data[3], calibrated_data[4], calibrated_data[5]);
+            printf("AS7262 - Corrected: V=%.2f, B=%.2f, G=%.2f, Y=%.2f, O=%.2f, R=%.2f\n",
+                   calibrated_data[0], calibrated_data[1], calibrated_data[2],
+                   calibrated_data[3], calibrated_data[4], calibrated_data[5]);
         } else {
             ESP_LOGE(TAG, "Error reading AS7262 measurement, code: %s", esp_err_to_name(ret));
         }
-        vTaskDelay(pdMS_TO_TICKS(10000)); // Delay for 10 seconds
+        vTaskDelay(pdMS_TO_TICKS(5000)); // Delay for 5 seconds
+    }
+}
+
+// Task to read TDS data
+void read_tds_task(void *arg) {
+    while (true) {
+        float tds_value = read_tds_sensor();
+        if (tds_value >= 0) {
+            printf("TDS Value: %.2f ppm\n", tds_value);
+        } else {
+            ESP_LOGE(TAG, "Failed to read TDS value.");
+        }
+        vTaskDelay(pdMS_TO_TICKS(5000)); // Delay for 5 seconds
     }
 }
 
 void app_main(void) {
+    // Initialize NVS
     esp_err_t ret = nvs_service_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize NVS: %s", esp_err_to_name(ret));
         return;
     }
 
+    // Initialize console
     initialize_console();
 
-    i2c_master_bus_handle_t i2c_bus;
-    ret = initialize_i2c_master(&i2c_bus);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize I2C master bus: %s", esp_err_to_name(ret));
-        return;
-    }
+    // Create sensor initialization task
+    xTaskCreate(sensor_init_task, "sensor_init_task", 4096, NULL, 5, NULL);
 
-    ret = scd41_init(i2c_bus, &scd41_dev);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize SCD41 device: %s", esp_err_to_name(ret));
-        return;
-    }
+    // Delay to ensure sensors are initialized before starting the read tasks
+    vTaskDelay(pdMS_TO_TICKS(1000)); // Delay for 1 second
 
-    ret = as7262_init(i2c_bus, &as7262_dev);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize AS7262 device: %s", esp_err_to_name(ret));
-        return;
-    }
+    // Create tasks for periodic sensor readings
+    xTaskCreate(read_scd41_task, "read_scd41_task", 4096, NULL, 5, NULL);
+    xTaskCreate(read_as7262_task, "read_as7262_task", 4096, NULL, 5, NULL);
+    xTaskCreate(read_tds_task, "read_tds_task", 4096, NULL, 5, NULL);
 
-    ret = tds_sensor_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize TDS sensor: %s", esp_err_to_name(ret));
-        return;
-    }
-
-    printf("Device is ready. Type 'help' to see available commands.\n");
-
+    // Create console task
     xTaskCreate(console_task, "console_task", 4096, NULL, 5, NULL);
-    xTaskCreate(scd41_task, "scd41_task", 4096, NULL, 5, NULL);
-    xTaskCreate(as7262_task, "as7262_task", 4096, NULL, 5, NULL);
+
+    ESP_LOGI(TAG, "App main complete.");
 }

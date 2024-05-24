@@ -123,13 +123,10 @@ esp_err_t scd41_set_forced_recalibration(i2c_master_dev_handle_t dev_handle, uin
     uint8_t data[3];
     data[0] = (target_co2_concentration >> 8) & 0xFF;
     data[1] = target_co2_concentration & 0xFF;
-    data[2] = 0x00; // CRC placeholder, compute as needed
+    data[2] = calculate_crc(data, 2);
 
     // Append the data to the command
     uint8_t buffer[5] = {command[0], command[1], data[0], data[1], data[2]};
-
-    // Compute CRC for the data bytes (implement CRC calculation if needed)
-    buffer[4] = calculate_crc(data, 2);
 
     esp_err_t ret = i2c_write_to_device(dev_handle, buffer, sizeof(buffer));
     if (ret != ESP_OK) {
