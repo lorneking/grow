@@ -2,28 +2,30 @@
 #define NVS_SERVICE_H
 
 #include "esp_err.h"
-#include <stdint.h>
 
-// Initialize the NVS service
+// Initialize NVS
 esp_err_t nvs_service_init(void);
 
-// Write an integer to NVS
+// Commit NVS changes
+esp_err_t nvs_service_commit(void);
+
+// Set an integer value in NVS
 esp_err_t nvs_service_set_i32(const char* key, int32_t value);
 
-// Read an integer from NVS
+// Get an integer value from NVS
 esp_err_t nvs_service_get_i32(const char* key, int32_t* value);
 
-// Write a string to NVS
+// Set a string value in NVS
 esp_err_t nvs_service_set_str(const char* key, const char* value);
 
-// Read a string from NVS
-esp_err_t nvs_service_get_str(const char* key, char* value, size_t max_len);
+// Get a string value from NVS
+esp_err_t nvs_service_get_str(const char* key, char* value, size_t length);
 
-// Erase a key from NVS
-esp_err_t nvs_service_erase_key(const char* key);
+// Set a blob in NVS
+esp_err_t nvs_service_set_blob(const char* key, const void* value, size_t length);
 
-// Commit changes to NVS
-esp_err_t nvs_service_commit(void);
+// Get a blob from NVS
+esp_err_t nvs_service_get_blob(const char* key, void* value, size_t* length);
 
 // Print NVS statistics
 void print_nvs_stats(void);

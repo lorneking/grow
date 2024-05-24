@@ -102,6 +102,17 @@ void app_main(void) {
         return;
     }
 
+    // Load AS7262 calibration parameters
+    as7262_calibration_t calibration;
+    ret = load_as7262_calibration(&calibration);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to load AS7262 calibration parameters: %s", esp_err_to_name(ret));
+        // Initialize with default values if loading fails
+        for (int i = 0; i < 6; i++) {
+            calibration.correction_factors[i] = 1.0f;
+        }
+    }
+
     // Configure AS7262 integration time and start measurement
     ret = as7262_set_integration_time(as7262_dev, 50); // 50 * 2.8ms = 140ms
     if (ret != ESP_OK) {

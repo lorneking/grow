@@ -79,6 +79,31 @@ esp_err_t nvs_service_commit(void) {
     return ret;
 }
 
+esp_err_t nvs_service_set_blob(const char* key, const void* value, size_t length) {
+    esp_err_t ret = nvs_set_blob(my_nvs_handle, key, value, length);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to write blob to NVS (%s)!", esp_err_to_name(ret));
+    } else {
+        ret = nvs_commit(my_nvs_handle);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to commit blob to NVS (%s)!", esp_err_to_name(ret));
+        }
+    }
+    return ret;
+}
+
+esp_err_t nvs_service_get_blob(const char* key, void* value, size_t* length) {
+    esp_err_t ret = nvs_get_blob(my_nvs_handle, key, value, length);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Blob value for key %s read successfully", key);
+    } else if (ret == ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGI(TAG, "The blob value for key %s is not initialized yet!", key);
+    } else {
+        ESP_LOGE(TAG, "Error (%s) reading blob key %s!", esp_err_to_name(ret), key);
+    }
+    return ret;
+}
+
 void print_nvs_stats(void) {
     nvs_stats_t nvs_stats;
     esp_err_t ret = nvs_get_stats(NULL, &nvs_stats); // NULL for default partition
