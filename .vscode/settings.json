@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "esp_log.h": "c",
+        "i2c_master.h": "c",
+        "freertos.h": "c"
+    }
+}
